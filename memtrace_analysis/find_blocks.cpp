@@ -7,12 +7,6 @@
 #include <stdint.h>
 #include "memtrace.h"
 #define LEN 100
-struct trace_block{
-  uint64_t ic_start, ic_end;
-  std::map<uint64_t, std::vector<uint8_t>> reads;
-  std::map<uint64_t, std::vector<uint8_t>> writes;
-  
-};
 std::ostream & operator<<(std::ostream &os,std::map<uint64_t, std::vector<uint8_t> >&m){
   os << "["<< std::endl;
   bool firstblock = true;
@@ -65,9 +59,12 @@ void read_tb(trace_block &out){
   int len = 0;
   do {
     fread(&m,sizeof m,1,stdin);
-    assert(!feof(stdin));
   } while(m.type!= CRYPTO_BEGIN);
-  std::cout << "block beginning\t " << m.addr << std::endl;
+  
+  if(feof(stdin)){
+    std::cout << "block not found\n" <<std::endl;
+  }
+  //  std::cout << "block beginning\t " << m.addr << std::endl;
   out.ic_start = m.addr;
   std::map<uint64_t, uint8_t> reads;
   std::map<uint64_t, uint8_t> writes;
@@ -84,11 +81,87 @@ void read_tb(trace_block &out){
   vectorize_set(writes,out.writes);
   out.ic_end = m.addr;
 }
+uint64_t find_result(const uint8_t *data, size_t siz, const trace_block &tb){
+  std::string cs((const char *)data,siz);
+  for(auto &block: tb.writes){
+    std::string blk((char *)block.second.data(), block.second.size());
+    size_t s = blk.find(cs);
+    if(s!=std::string::npos){
+      return block.first + s;
+    }
+  }
+  return 0;
+}
+#include <openssl/aes.h>
+/*
+#define SWEEP_PARAMETER(var,blocks,size)
+template <class f, class container> sweep_parameter(container &c, int size, f& func){
+  for(auto &block: c){
+    for(int off= 0; off+size <= block.second.size(); off++){
+      f((const uint8_t *) block.second.data() + off);
+    }
+  }
+}
+
+for(auto &var ## _blk : blocks) for(int var ## _off= 0, const uint8_t *var; var = var##_blk.second.data() + var##_offset, var ##_off + size <= var ##_blk.second.size(); var ##_off ++)
+
+void find_AES(const trace_block &t){
+  for(int keysize : {16,24, 32}){
+    sweep_parameter(t.reads,keysize, [](const uint8_t *key){
+      AES_KEY wctx;
+      AES_set_encrypt_key(key, keysize * 8, &wctx);
+      sweep_parameter(t.reads,16, [](const uint8_t *plain){
+          uint64_t addr;
+          uint8_t cypher[16];
+        AES_encrypt(plain, cypher,  &wctx);
+        addr = find_result(cypher, 16, t);
+        if(addr!=0){
+          printf("FOUND AES\n");
+        }
+        });
+      });
+    SWEEP_PARAMETER(key, t.reads, keysize){
+      SWEEP_PARAMETER(plain, t.reads, 16){
+      }
+    }
+    }*/
+static int count = 0;
+void find_AES(const trace_block &t){
+  for(int keysize : {16,24, 32}){
+    for(auto &keyblock: t.reads){
+      for(int keyoff=0;keyoff + keysize <= keyblock.second.size();keyoff++){
+        const uint8_t *key = keyblock.second.data() + keyoff;
+        AES_KEY wctx;
+        //        AES_set_encrypt_key(key, keysize * 8, &wctx);
+        const int plainsize = 16;
+        for(auto &plainblock: t.reads){
+          for(int plainoff=0; plainoff + plainsize <= plainblock.second.size();plainoff++){
+            const uint8_t *plain = plainblock.second.data() + plainoff;
+            uint64_t addr = 0;
+            uint8_t cypher[16];
+            //AES_encrypt(plain, cypher, &wctx);
+            //addr = find_result(cypher, 16, t);
+            count++;
+            if(addr!=0){
+              printf("FOUND AES\n");
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void analyze(const trace_block &t){
+  find_AES(t);
+}
 int main(){
   int i=0;
   for(;!feof(stdin);i++){
     trace_block tb;
     read_tb(tb);
+    analyze(tb);
     std::cout << tb << std::endl;
   }
+    std::cout << count;
 }
