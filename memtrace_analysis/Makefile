@@ -1,9 +1,12 @@
-CXXFLAGS+=-std=c++11 -lcrypto -O0 -ggdb -lprotobuf -lpb2json
-BINARIES=average_length print find_blocks lengths
+CXXFLAGS+=-std=c++11 -lcrypto -O0 -ggdb -lprotobuf
+BINARIES=print disas
 all: $(BINARIES)
 %.pb.cc:%.proto
 	protoc --cpp_out=. $<
+print: CXXFLAGS += -lpb2json
 print: print.cpp trace.pb.cc
-average_length: average_length.cpp
+disas: CXXFLAGS += -ldistorm3
+disas: disas.cpp trace.pb.cc
+
 clean:
 	rm $(BINARIES)
